@@ -1,4 +1,4 @@
-# Jams V1 — Flipper Zero RF Jammer
+# Jams V1 - Flipper Zero RF Jammer
 
 A polished, feature-rich sub-GHz jammer for the Flipper Zero, with the simple layout and run/pause/stop controls.
 
@@ -8,16 +8,16 @@ Built and tested against **Momentum firmware** (`mntm-011`, target `f7`, API `86
 
 ## ✨ Features
 
-- **15 jamming modes** — OOK, 2FSK (low/high deviation), MSK, GFSK, Bruteforce, Sine, Square, Sawtooth, White Noise, Triangle, Chirp, Gaussian Noise, Burst, and Raw Noise (hardware RNG)
-- **Run / Pause / Stop** control — short OK to toggle pause, long OK to fully stop
-- **Sweep / Oscillate mode** — bounce between two frequencies with configurable step and speed
+- **15 jamming modes** - OOK, 2FSK (low/high deviation), MSK, GFSK, Bruteforce, Sine, Square, Sawtooth, White Noise, Triangle, Chirp, Gaussian Noise, Burst, and Raw Noise (hardware RNG)
+- **Run / Pause / Stop** control - short OK to toggle pause, long OK to fully stop
+- **Sweep / Oscillate mode** - bounce between two frequencies with configurable step and speed
 - **Digit-by-digit frequency tuning** across the full Flipper sub-GHz range (300 – 928 MHz)
-- **Region bypass** — auto-installs a fake `FTW` country code so all bands are unlocked
-- **Saveable presets** — 6 defaults plus on-the-fly save/load/delete (up to 20 total)
-- **In-app menu** — clean submenus for mode select, presets, sweep, and a Raw Noise shortcut
-- **Animated header** — antenna dots scan outward when running, retreat when paused, idle when stopped
-- **RGB LED status indicator** — see at a glance what the app is doing
-- **External / internal CC1101 auto-detect** — uses an external module if connected, otherwise the built-in radio
+- **Region bypass** - auto-installs a fake `FTW` country code so all bands are unlocked
+- **Saveable presets** - 6 defaults plus on-the-fly save/load/delete (up to 20 total)
+- **In-app menu** - clean submenus for mode select, presets, sweep, and a Raw Noise shortcut
+- **Animated header** - antenna dots scan outward when running, retreat when paused, idle when stopped
+- **RGB LED status indicator** - see at a glance what the app is doing
+- **External / internal CC1101 auto-detect** - uses an external module if connected, otherwise the built-in radio
 
 ---
 
@@ -42,15 +42,15 @@ On the main screen:
 |---|---|---|
 | OK | Start / Pause / Resume | Stop |
 | Back | Open menu | Exit app |
-| Up / Down | Adjust selected digit | — |
-| Left / Right | Move digit cursor | — |
+| Up / Down | Adjust selected digit | - |
+| Left / Right | Move digit cursor | - |
 
 ### Menu
-- **Jamming Mode** — pick from the 15-mode list
-- **Presets** — load, save, or delete frequency+mode combinations
-- **Sweep** — configure and start an oscillating sweep
-- **Raw Noise** — one-tap shortcut to the hardware-RNG noise mode
-- **Back** — return to the jammer screen
+- **Jamming Mode** - pick from the 15-mode list
+- **Presets** - load, save, or delete frequency+mode combinations
+- **Sweep** - configure and start an oscillating sweep
+- **Raw Noise** - one-tap shortcut to the hardware-RNG noise mode
+- **Back** - return to the jammer screen
 
 ---
 
@@ -79,13 +79,13 @@ Capacity is 20 presets total.
 
 ## 🔁 Sweep / Oscillate Mode
 
-Hop the carrier back and forth between two frequencies — useful for covering narrow gaps where a target listens on more than one channel (e.g. 433.92 ↔ 434.00 MHz).
+Hop the carrier back and forth between two frequencies - useful for covering narrow gaps where a target listens on more than one channel (e.g. 433.92 ↔ 434.00 MHz).
 
 **Configuration screen:**
-- **From** — locked to whatever frequency you were on when you entered Sweep
-- **To** — adjustable: Up/Down ±10 kHz, Left/Right ±100 kHz
-- **Step** — 10 kHz / 50 kHz / 100 kHz / 500 kHz
-- **Speed** — Fast (50 ms) / Medium (150 ms) / Slow (500 ms)
+- **From** - locked to whatever frequency you were on when you entered Sweep
+- **To** - adjustable: Up/Down ±10 kHz, Left/Right ±100 kHz
+- **Step** - 10 kHz / 50 kHz / 100 kHz / 500 kHz
+- **Speed** - Fast (50 ms) / Medium (150 ms) / Slow (500 ms)
 
 **OK** advances row by row; on the Speed row it starts the sweep and returns to the main screen with the status badge showing `~~ SWEEPING ~~`. Switching jamming mode or stopping (long OK) clears sweep mode.
 
@@ -137,7 +137,7 @@ Each jamming mode is implemented as a distinct modulation scheme and data patter
 
 ### 🚀 **Bruteforce 0xFF**
 - **Pattern**: Constant `0xFF`.
-- **Mechanism**: Pumps a flat all-ones bitstream — effectively a strong unmodulated carrier.
+- **Mechanism**: Pumps a flat all-ones bitstream - effectively a strong unmodulated carrier.
 - **Impact**: The most aggressive jamming style; few receivers can demodulate around it.
 
 ### 🎶 **Sine Wave**
@@ -158,7 +158,7 @@ Each jamming mode is implemented as a distinct modulation scheme and data patter
 ### 🎲 **White Noise**
 - **Pattern**: Pseudo-random bytes from `rand()`.
 - **Mechanism**: Spread-spectrum-style flat noise.
-- **Impact**: Universal disruption — works against most modulations.
+- **Impact**: Universal disruption - works against most modulations.
 
 ### 🔺 **Triangle Wave**
 - **Pattern**: Linear ramp up then down.
@@ -173,7 +173,7 @@ Each jamming mode is implemented as a distinct modulation scheme and data patter
 ### 🎲 **Gaussian Noise**
 - **Pattern**: Bytes drawn from a Box-Muller normal distribution.
 - **Mechanism**: Statistically natural-looking noise.
-- **Impact**: Especially good against Gaussian-modulated digital links — looks like ambient RF noise.
+- **Impact**: Especially good against Gaussian-modulated digital links - looks like ambient RF noise.
 
 ### 💥 **Burst Mode**
 - **Pattern**: Single `0xFF` byte every 10 bytes, the rest zero.
@@ -181,7 +181,7 @@ Each jamming mode is implemented as a distinct modulation scheme and data patter
 - **Impact**: Mimics packet-based traffic, confusing burst-receiver state machines.
 
 ### 🌪 **Raw Noise**
-- **Pattern**: Bytes from `furi_hal_random_fill_buf()` — the Flipper's hardware RNG.
+- **Pattern**: Bytes from `furi_hal_random_fill_buf()` - the Flipper's hardware RNG.
 - **Mechanism**: True hardware-entropy noise, regenerated per buffer.
 - **Impact**: A higher-quality random source than the C `rand()` PRNG; useful when you want noise that won't repeat predictably.
 
