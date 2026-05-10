@@ -64,7 +64,17 @@ static const char* menu_items[MENU_ITEMS_COUNT] = {
     "Presets",
     "Sweep",
     "Raw Noise",
+    "Main Style",
     "Back",
+};
+
+static const char* style_names[MAIN_STYLE_COUNT] = {
+    "Classic",
+    "Oscilloscope",
+    "Radar Scope",
+    "Vintage Tuner",
+    "Hacker Term",
+    "Spectrum Bars",
 };
 
 static const char* save_names[SAVE_NAMES_COUNT] = {
@@ -171,7 +181,45 @@ static void draw_list_item(Canvas* canvas, int item_y, bool selected, const char
 
 // ---- Screen draw functions ----
 
-static void draw_jammer_screen(Canvas* canvas, JammerApp* app) {
+// Compact freq display "NNN.NN MHz" using FontPrimary at (x_left, top_y) AlignTop.
+// Underlines the digit at app->cursor_position. Returns total width drawn.
+static int draw_freq_compact(Canvas* canvas, int x_left, int top_y, JammerApp* app) {
+    canvas_set_font(canvas, FontPrimary);
+    char digits[8];
+    snprintf(digits, sizeof(digits), "%03lu.%02lu",
+        (unsigned long)(app->frequency / 1000000),
+        (unsigned long)((app->frequency % 1000000) / 10000));
+    int digit_idx = 0;
+    int cur_x = x_left;
+    for(size_t i = 0; i < strlen(digits); i++) {
+        char c[2] = {digits[i], '\0'};
+        canvas_draw_str_aligned(canvas, cur_x, top_y, AlignLeft, AlignTop, c);
+        int cw = canvas_string_width(canvas, c);
+        if(digits[i] != '.') {
+            if(digit_idx == (int)app->cursor_position)
+                canvas_draw_line(canvas, cur_x, top_y + 9, cur_x + cw - 1, top_y + 9);
+            digit_idx++;
+        }
+        cur_x += cw;
+    }
+    canvas_draw_str_aligned(canvas, cur_x, top_y, AlignLeft, AlignTop, " MHz");
+    cur_x += canvas_string_width(canvas, " MHz");
+    return cur_x - x_left;
+}
+
+// Bottom hint line for any main-screen style
+static void draw_jam_hint(Canvas* canvas, JammerApp* app, int y) {
+    canvas_set_font(canvas, FontSecondary);
+    const char* hint;
+    switch(app->jam_status) {
+        case JamStatusRunning: hint = "OK:Pause  Back:Menu";  break;
+        case JamStatusPaused:  hint = "OK:Resume  Back:Menu"; break;
+        default:               hint = "OK:Start  Back:Menu";  break;
+    }
+    canvas_draw_str_aligned(canvas, 64, y, AlignCenter, AlignTop, hint);
+}
+
+static void draw_jammer_classic(Canvas* canvas, JammerApp* app) {
     canvas_clear(canvas);
 
     // Outer border frame
@@ -458,15 +506,453 @@ static void draw_sweep_screen(Canvas* canvas, JammerApp* app) {
     }
 }
 
+// ============================================================
+// Alternative main-screen styles
+// ============================================================
+
+static void draw_jammer_oscilloscope(Canvas* canvas, JammerApp* app) {
+    canvas_clear(canvas);
+    canvas_draw_frame(canvas, 0, 0, 128, 64);
+
+    // Top: freq with cursor + status icon
+    int total_w = draw_freq_compact(canvas, 14, 2, app);
+    UNUSED(total_w);
+    canvas_set_font(canvas, FontSecondary);
+    const char* icon;
+    switch(app->jam_status) {
+        case JamStatusRunning: icon = app->sweep_enabled ? "~" : ">"; break;
+        case JamStatusPaused:  icon = "II"; break;
+        default:               icon = "[]"; break;
+    }
+    canvas_draw_str_aligned(canvas, 124, 3, AlignRight, AlignTop, icon);
+
+    // Scope frame
+    canvas_draw_line(canvas, 3, 13, 124, 13);
+    canvas_draw_line(canvas, 3, 47, 124, 47);
+
+    // Scope trace — different waveform per mode
+    int center_y = 30;
+    uint8_t f = app->anim_frame;
+    bool active = (app->jam_status == JamStatusRunning);
+    if(!active) f = 0;
+    for(int xi = 4; xi < 124; xi++) {
+        int phase = xi - 4 + (int)(f * 4);
+        int y_pt = center_y;
+        switch(app->jamming_mode) {
+            case JammerModeSineWave:
+                y_pt = center_y - (int)(13.0f * sinf(phase * 0.30f));
+                break;
+            case JammerModeChirp: {
+                float t = (xi - 4) / 120.0f;
+                y_pt = center_y - (int)(13.0f * sinf(phase * (0.15f + t * 0.5f)));
+                break;
+            }
+            case JammerModeSquareWave:
+            case JammerModeOok650Async:
+            case JammerModeBruteforce:
+                y_pt = center_y + (((phase / 8) % 2) ? 13 : -13);
+                break;
+            case JammerMode2FSKDev238Async:
+            case JammerMode2FSKDev476Async:
+                y_pt = center_y + (((phase / 4) % 2) ? 8 : -8);
+                break;
+            case JammerModeMSK99_97KbAsync:
+            case JammerModeGFSK9_99KbAsync:
+                y_pt = center_y + (int)(((phase * 7919u) % 17u)) - 8;
+                break;
+            case JammerModeSawtoothWave:
+                y_pt = center_y - 13 + ((phase) % 26);
+                break;
+            case JammerModeTriangleWave: {
+                int p = phase % 24;
+                y_pt = center_y - 13 + (p < 12 ? p * 2 : (24 - p) * 2);
+                break;
+            }
+            case JammerModeWhiteNoise:
+            case JammerModeRawNoise:
+            case JammerModeGaussianNoise:
+                y_pt = center_y + (int)(((phase * 2654435761u) % 27u)) - 13;
+                break;
+            case JammerModeBurst:
+                y_pt = center_y + ((phase % 16 == 0) ? -13 : 13);
+                break;
+            default:
+                y_pt = center_y;
+                break;
+        }
+        if(y_pt < 15) y_pt = 15;
+        if(y_pt > 45) y_pt = 45;
+        canvas_draw_dot(canvas, xi, y_pt);
+    }
+
+    // Mode label inside scope (top-left corner)
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, 64, 49, AlignCenter, AlignTop, mode_names[app->jamming_mode]);
+
+    draw_jam_hint(canvas, app, 56);
+}
+
+static void draw_jammer_radar(Canvas* canvas, JammerApp* app) {
+    canvas_clear(canvas);
+
+    // Left: radar dial
+    int cx = 30, cy = 32;
+    canvas_draw_circle(canvas, cx, cy, 28);
+    canvas_draw_circle(canvas, cx, cy, 19);
+    canvas_draw_circle(canvas, cx, cy, 9);
+    canvas_draw_line(canvas, cx - 28, cy, cx + 28, cy);
+    canvas_draw_line(canvas, cx, cy - 28, cx, cy + 28);
+
+    // Sweep line — 8 fixed angles indexed by anim_frame
+    static const int8_t sweep_dx[8] = { 28,  20,   0, -20, -28, -20,   0,  20};
+    static const int8_t sweep_dy[8] = {  0,  20,  28,  20,   0, -20, -28, -20};
+    uint8_t f = app->anim_frame % 8;
+    if(app->jam_status == JamStatusRunning)
+        canvas_draw_line(canvas, cx, cy, cx + sweep_dx[f], cy + sweep_dy[f]);
+
+    // Static "blips"
+    canvas_draw_dot(canvas, cx + 8,  cy - 5);
+    canvas_draw_dot(canvas, cx - 12, cy + 8);
+    canvas_draw_dot(canvas, cx + 5,  cy + 14);
+    canvas_draw_dot(canvas, cx - 6,  cy - 18);
+
+    // Right column
+    canvas_draw_line(canvas, 62, 0, 62, 63);
+    draw_freq_compact(canvas, 65, 3, app);
+
+    canvas_draw_line(canvas, 64, 14, 126, 14);
+
+    canvas_set_font(canvas, FontSecondary);
+    char mode_short[14];
+    strncpy(mode_short, mode_names[app->jamming_mode], 13);
+    mode_short[13] = '\0';
+    canvas_draw_str_aligned(canvas, 95, 17, AlignCenter, AlignTop, mode_short);
+
+    const char* status;
+    switch(app->jam_status) {
+        case JamStatusRunning: status = app->sweep_enabled ? "~SWEEP~" : "RUNNING"; break;
+        case JamStatusPaused:  status = "PAUSED";  break;
+        default:               status = "STOPPED"; break;
+    }
+    canvas_draw_str_aligned(canvas, 95, 27, AlignCenter, AlignTop, status);
+
+    canvas_draw_line(canvas, 64, 38, 126, 38);
+
+    const char* h1;
+    const char* h2 = "Bk:Menu";
+    switch(app->jam_status) {
+        case JamStatusRunning: h1 = "OK:Pause";  break;
+        case JamStatusPaused:  h1 = "OK:Resume"; break;
+        default:               h1 = "OK:Start";  break;
+    }
+    canvas_draw_str_aligned(canvas, 95, 42, AlignCenter, AlignTop, h1);
+    canvas_draw_str_aligned(canvas, 95, 52, AlignCenter, AlignTop, h2);
+}
+
+static void draw_jammer_tuner(Canvas* canvas, JammerApp* app) {
+    canvas_clear(canvas);
+
+    // Title bar (inverted)
+    canvas_draw_box(canvas, 0, 0, 128, 11);
+    canvas_set_color(canvas, ColorWhite);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str_aligned(canvas, 64, 2, AlignCenter, AlignTop, "JAMS V1");
+    canvas_set_color(canvas, ColorBlack);
+
+    // Frequency scale 300 - 928 MHz, x range 4..124
+    int x0 = 4, x1 = 124, scale_y = 22;
+    int range = 928 - 300;
+    canvas_draw_line(canvas, x0, scale_y, x1, scale_y);
+    canvas_draw_line(canvas, x0, scale_y - 3, x0, scale_y + 3);
+    canvas_draw_line(canvas, x1, scale_y - 3, x1, scale_y + 3);
+    int x_348 = x0 + (348 - 300) * (x1 - x0) / range;
+    int x_387 = x0 + (387 - 300) * (x1 - x0) / range;
+    int x_464 = x0 + (464 - 300) * (x1 - x0) / range;
+    int x_779 = x0 + (779 - 300) * (x1 - x0) / range;
+    canvas_draw_line(canvas, x_348, scale_y - 2, x_348, scale_y + 2);
+    canvas_draw_line(canvas, x_387, scale_y - 2, x_387, scale_y + 2);
+    canvas_draw_line(canvas, x_464, scale_y - 2, x_464, scale_y + 2);
+    canvas_draw_line(canvas, x_779, scale_y - 2, x_779, scale_y + 2);
+
+    // Pointer ▼ above the scale at the current frequency
+    int px = x0 + (int)(((int64_t)app->frequency - 300000000) * (x1 - x0) / 628000000);
+    if(px < x0) px = x0;
+    if(px > x1) px = x1;
+    canvas_draw_line(canvas, px,     scale_y - 6, px,     scale_y - 1);
+    canvas_draw_line(canvas, px - 1, scale_y - 6, px - 1, scale_y - 5);
+    canvas_draw_line(canvas, px + 1, scale_y - 6, px + 1, scale_y - 5);
+    canvas_draw_line(canvas, px - 2, scale_y - 6, px - 2, scale_y - 6);
+    canvas_draw_line(canvas, px + 2, scale_y - 6, px + 2, scale_y - 6);
+
+    // Big freq display with cursor
+    int total_w = canvas_string_width(canvas, "433.92") + canvas_string_width(canvas, " MHz");
+    UNUSED(total_w);
+    canvas_set_font(canvas, FontPrimary);
+    int approx_w = 6 * 5 + 3 + canvas_string_width(canvas, " MHz"); // best-effort centering
+    int xf = (128 - approx_w) / 2;
+    draw_freq_compact(canvas, xf, 28, app);
+
+    // Mode (left) + status (right)
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, 4, 42, AlignLeft, AlignTop, mode_names[app->jamming_mode]);
+    const char* status;
+    switch(app->jam_status) {
+        case JamStatusRunning: status = app->sweep_enabled ? "[SWEEP]" : "[ON-AIR]"; break;
+        case JamStatusPaused:  status = "[PAUSE]"; break;
+        default:               status = "[STBY]";  break;
+    }
+    canvas_draw_str_aligned(canvas, 124, 42, AlignRight, AlignTop, status);
+
+    canvas_draw_line(canvas, 0, 53, 127, 53);
+    draw_jam_hint(canvas, app, 56);
+}
+
+static void draw_jammer_terminal(Canvas* canvas, JammerApp* app) {
+    canvas_clear(canvas);
+    canvas_draw_frame(canvas, 0, 0, 128, 64);
+    canvas_set_font(canvas, FontSecondary);
+
+    // Title row + blinking cursor block
+    canvas_draw_str_aligned(canvas, 4, 2, AlignLeft, AlignTop, "[jams@flipper]");
+    if(app->anim_frame % 4 < 2)
+        canvas_draw_box(canvas, 118, 2, 5, 6);
+    canvas_draw_line(canvas, 1, 9, 127, 9);
+
+    // Line 1: tx command with embedded freq + cursor
+    const char* prefix = "> tx --f=";
+    canvas_draw_str_aligned(canvas, 3, 11, AlignLeft, AlignTop, prefix);
+    int x_cmd = 3 + canvas_string_width(canvas, prefix);
+    char digits[8];
+    snprintf(digits, sizeof(digits), "%03lu.%02lu",
+        (unsigned long)(app->frequency / 1000000),
+        (unsigned long)((app->frequency % 1000000) / 10000));
+    int digit_idx = 0;
+    int cur_x = x_cmd;
+    for(size_t i = 0; i < strlen(digits); i++) {
+        char c[2] = {digits[i], '\0'};
+        canvas_draw_str_aligned(canvas, cur_x, 11, AlignLeft, AlignTop, c);
+        int cw = canvas_string_width(canvas, c);
+        if(digits[i] != '.') {
+            if(digit_idx == (int)app->cursor_position)
+                canvas_draw_line(canvas, cur_x, 18, cur_x + cw - 1, 18);
+            digit_idx++;
+        }
+        cur_x += cw;
+    }
+
+    // Line 2: status
+    char line[40];
+    const char* status;
+    switch(app->jam_status) {
+        case JamStatusRunning: status = app->sweep_enabled ? "SWEEPING..." : "TRANSMITTING..."; break;
+        case JamStatusPaused:  status = "PAUSED."; break;
+        default:               status = "READY.";  break;
+    }
+    snprintf(line, sizeof(line), "> stat: %s", status);
+    canvas_draw_str_aligned(canvas, 3, 20, AlignLeft, AlignTop, line);
+
+    // Line 3: mode
+    snprintf(line, sizeof(line), "> mod: %s", mode_names[app->jamming_mode]);
+    canvas_draw_str_aligned(canvas, 3, 29, AlignLeft, AlignTop, line);
+
+    // Line 4: pseudo-hex packet, content varies by mode + frame
+    uint8_t f = app->anim_frame;
+    char hex_line[24];
+    switch(app->jamming_mode) {
+        case JammerModeOok650Async:
+        case JammerModeBruteforce:
+            snprintf(hex_line, sizeof(hex_line), "FFFF FFFF FFFF FF");
+            break;
+        case JammerMode2FSKDev238Async:
+        case JammerMode2FSKDev476Async:
+            snprintf(hex_line, sizeof(hex_line), (f % 2) ? "AA55 AA55 AA55 AA" : "55AA 55AA 55AA 55");
+            break;
+        case JammerModeSquareWave:
+            snprintf(hex_line, sizeof(hex_line), (f % 2) ? "FF00 FF00 FF00 FF" : "00FF 00FF 00FF 00");
+            break;
+        case JammerModeBurst:
+            snprintf(hex_line, sizeof(hex_line), (f % 4 == 0) ? "FF00 0000 0000 00" : "0000 0000 0000 00");
+            break;
+        default: {
+            uint16_t r1 = (uint16_t)(f * 7919u + 13u);
+            uint16_t r2 = (uint16_t)(f * 6151u + 17u);
+            uint16_t r3 = (uint16_t)(f * 4919u + 23u);
+            snprintf(hex_line, sizeof(hex_line), "%04X %04X %04X", r1, r2, r3);
+            break;
+        }
+    }
+    snprintf(line, sizeof(line), "> pkt[%s]", hex_line);
+    canvas_draw_str_aligned(canvas, 3, 38, AlignLeft, AlignTop, line);
+
+    // Prompt with blinking cursor
+    canvas_draw_str_aligned(canvas, 3, 47, AlignLeft, AlignTop, ">");
+    if(app->anim_frame % 4 < 2)
+        canvas_draw_box(canvas, 11, 47, 4, 6);
+
+    canvas_draw_line(canvas, 1, 55, 127, 55);
+
+    const char* hint;
+    switch(app->jam_status) {
+        case JamStatusRunning: hint = "OK:pause  Bk:menu";  break;
+        case JamStatusPaused:  hint = "OK:resume  Bk:menu"; break;
+        default:               hint = "OK:start  Bk:menu";  break;
+    }
+    canvas_draw_str_aligned(canvas, 64, 57, AlignCenter, AlignTop, hint);
+}
+
+static void draw_jammer_spectrum(Canvas* canvas, JammerApp* app) {
+    canvas_clear(canvas);
+    canvas_draw_frame(canvas, 0, 0, 128, 64);
+
+    // Top: freq with cursor (centered) + status glyph (right)
+    char tmp[8];
+    snprintf(tmp, sizeof(tmp), "%03lu.%02lu",
+        (unsigned long)(app->frequency / 1000000),
+        (unsigned long)((app->frequency % 1000000) / 10000));
+    canvas_set_font(canvas, FontPrimary);
+    int approx_w = canvas_string_width(canvas, tmp) + canvas_string_width(canvas, " MHz");
+    int xf = (128 - approx_w) / 2 - 6;
+    draw_freq_compact(canvas, xf, 2, app);
+
+    canvas_set_font(canvas, FontSecondary);
+    const char* glyph;
+    switch(app->jam_status) {
+        case JamStatusRunning: glyph = app->sweep_enabled ? "~~" : ">>"; break;
+        case JamStatusPaused:  glyph = "II"; break;
+        default:               glyph = "[]"; break;
+    }
+    canvas_draw_str_aligned(canvas, 124, 3, AlignRight, AlignTop, glyph);
+
+    canvas_draw_line(canvas, 3, 13, 124, 13);
+    canvas_draw_str_aligned(canvas, 64, 14, AlignCenter, AlignTop, mode_names[app->jamming_mode]);
+
+    // 16 bars across, height varies by mode + frame
+    const int bars   = 16;
+    const int bar_w  = 6;
+    const int gap    = 1;
+    const int total  = bars * bar_w + (bars - 1) * gap;
+    const int bx0    = (128 - total) / 2;
+    const int by_top = 23;
+    const int by_bot = 53;
+    const int max_h  = by_bot - by_top;
+
+    uint8_t f = app->anim_frame;
+    bool active = (app->jam_status == JamStatusRunning);
+    if(!active) f = 0;
+
+    for(int b = 0; b < bars; b++) {
+        int h;
+        // Sweep mode overrides with traveling pulse
+        if(app->sweep_enabled && active) {
+            int pos = f % (bars * 2);
+            if(pos >= bars) pos = (bars * 2) - pos - 1;
+            int dist = b - pos; if(dist < 0) dist = -dist;
+            h = max_h - dist * 4;
+        } else {
+            switch(app->jamming_mode) {
+                case JammerModeSineWave: {
+                    float a = (b + (int)f * 1) * 0.45f;
+                    h = (int)(max_h * 0.5f + max_h * 0.45f * sinf(a));
+                    break;
+                }
+                case JammerModeChirp: {
+                    float a = (b + (int)f * 1) * (0.20f + b * 0.04f);
+                    h = (int)(max_h * 0.5f + max_h * 0.45f * sinf(a));
+                    break;
+                }
+                case JammerModeSquareWave:
+                case JammerModeOok650Async:
+                case JammerModeBruteforce:
+                    h = ((b + f) % 2) ? max_h : max_h / 4;
+                    break;
+                case JammerMode2FSKDev238Async:
+                case JammerMode2FSKDev476Async:
+                    h = ((b + f) % 2) ? max_h * 3 / 4 : max_h / 3;
+                    break;
+                case JammerModeSawtoothWave:
+                    h = ((b * 3 + f * 2) % max_h);
+                    break;
+                case JammerModeTriangleWave: {
+                    int p = (b + f) % 16;
+                    h = (p < 8 ? p : 16 - p) * (max_h / 8);
+                    break;
+                }
+                case JammerModeBurst:
+                    h = ((b + f) % 5 == 0) ? max_h : max_h / 5;
+                    break;
+                case JammerModeMSK99_97KbAsync:
+                case JammerModeGFSK9_99KbAsync:
+                case JammerModeWhiteNoise:
+                case JammerModeRawNoise:
+                case JammerModeGaussianNoise:
+                default:
+                    h = (int)(((b * 7919u + f * 6151u) % (uint32_t)(max_h - 4)) + 4);
+                    break;
+            }
+        }
+        if(!active) h = max_h / 6;
+        if(h < 2) h = 2;
+        if(h > max_h) h = max_h;
+        int bx = bx0 + b * (bar_w + gap);
+        canvas_draw_box(canvas, bx, by_bot - h, bar_w, h);
+    }
+
+    canvas_draw_line(canvas, 3, 54, 124, 54);
+    draw_jam_hint(canvas, app, 56);
+}
+
+// Dispatcher — routes to the chosen style
+static void draw_jammer_screen(Canvas* canvas, JammerApp* app) {
+    switch(app->main_style) {
+        case StyleOscilloscope: draw_jammer_oscilloscope(canvas, app); break;
+        case StyleRadar:        draw_jammer_radar(canvas, app);        break;
+        case StyleTuner:        draw_jammer_tuner(canvas, app);        break;
+        case StyleTerminal:     draw_jammer_terminal(canvas, app);     break;
+        case StyleSpectrum:     draw_jammer_spectrum(canvas, app);     break;
+        case StyleClassic:
+        default:                draw_jammer_classic(canvas, app);      break;
+    }
+}
+
+// ----- Style picker screen -----
+static void draw_style_select_screen(Canvas* canvas, JammerApp* app) {
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str_aligned(canvas, 64, 2, AlignCenter, AlignTop, "Main Style");
+    canvas_draw_line(canvas, 0, 13, 128, 13);
+
+    int sel   = (int)app->style_selection;
+    int start = sel - 1;
+    if(start < 0) start = 0;
+    if(start > MAIN_STYLE_COUNT - 4) start = MAIN_STYLE_COUNT - 4;
+    if(start < 0) start = 0;
+
+    for(int i = 0; i < 4; i++) {
+        int idx = start + i;
+        if(idx >= MAIN_STYLE_COUNT) break;
+        char buf[20];
+        // mark current style with •
+        if(idx == (int)app->main_style)
+            snprintf(buf, sizeof(buf), "%s *", style_names[idx]);
+        else
+            snprintf(buf, sizeof(buf), "%s", style_names[idx]);
+        draw_list_item(canvas, 16 + i * 10, idx == sel, buf);
+    }
+
+    canvas_set_font(canvas, FontSecondary);
+    canvas_draw_str_aligned(canvas, 64, 56, AlignCenter, AlignTop, "OK:Apply  Back:Cancel");
+}
+
 static void draw_callback(Canvas* canvas, void* context) {
     JammerApp* app = (JammerApp*)context;
     switch(app->screen) {
-        case AppScreenJammer:     draw_jammer_screen(canvas, app);    break;
-        case AppScreenMenu:       draw_menu_screen(canvas, app);      break;
-        case AppScreenModeSelect: draw_mode_screen(canvas, app);      break;
-        case AppScreenPresets:    draw_presets_screen(canvas, app);   break;
-        case AppScreenSaveName:   draw_save_name_screen(canvas, app); break;
-        case AppScreenSweep:      draw_sweep_screen(canvas, app);     break;
+        case AppScreenJammer:      draw_jammer_screen(canvas, app);       break;
+        case AppScreenMenu:        draw_menu_screen(canvas, app);         break;
+        case AppScreenModeSelect:  draw_mode_screen(canvas, app);         break;
+        case AppScreenPresets:     draw_presets_screen(canvas, app);      break;
+        case AppScreenSaveName:    draw_save_name_screen(canvas, app);    break;
+        case AppScreenSweep:       draw_sweep_screen(canvas, app);        break;
+        case AppScreenStyleSelect: draw_style_select_screen(canvas, app); break;
     }
 }
 
@@ -699,6 +1185,10 @@ static void handle_menu_input(JammerApp* app, InputEvent* ev) {
                         apply_mode(app, JammerModeRawNoise);
                         app->screen = AppScreenJammer;
                         break;
+                    case 4: // Main Style
+                        app->style_selection = (uint8_t)app->main_style;
+                        app->screen = AppScreenStyleSelect;
+                        break;
                     default: // Back
                         app->screen = AppScreenJammer;
                         break;
@@ -872,6 +1362,27 @@ static void handle_sweep_input(JammerApp* app, InputEvent* ev) {
     }
 }
 
+static void handle_style_select_input(JammerApp* app, InputEvent* ev) {
+    if(ev->type == InputTypeShort || ev->type == InputTypeRepeat) {
+        switch(ev->key) {
+            case InputKeyUp:
+                if(app->style_selection > 0) app->style_selection--;
+                break;
+            case InputKeyDown:
+                if(app->style_selection < MAIN_STYLE_COUNT - 1) app->style_selection++;
+                break;
+            case InputKeyOk:
+                app->main_style = (MainScreenStyle)app->style_selection;
+                app->screen     = AppScreenJammer;
+                break;
+            case InputKeyBack:
+                app->screen = AppScreenMenu;
+                break;
+            default: break;
+        }
+    }
+}
+
 // ---- Animation timer ----
 
 static void timer_callback(void* ctx) {
@@ -941,6 +1452,8 @@ JammerApp* jammer_app_alloc(void) {
     app->sweep_row          = 0;
     app->sweep_last_hop     = 0;
     app->sweep_going_up     = true;
+    app->main_style         = StyleClassic;
+    app->style_selection    = 0;
     app->anim_frame         = 0;
     app->app_running        = true;
     app->tx_thread          = NULL;
@@ -1036,7 +1549,8 @@ int32_t jammer_app(void* p) {
                 case AppScreenModeSelect: handle_mode_input(app, &event);      break;
                 case AppScreenPresets:    handle_presets_input(app, &event);   break;
                 case AppScreenSaveName:   handle_save_name_input(app, &event); break;
-                case AppScreenSweep:      handle_sweep_input(app, &event);     break;
+                case AppScreenSweep:       handle_sweep_input(app, &event);        break;
+                case AppScreenStyleSelect: handle_style_select_input(app, &event); break;
             }
             view_port_update(app->view_port);
         }

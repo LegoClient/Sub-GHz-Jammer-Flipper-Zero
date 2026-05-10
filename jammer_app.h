@@ -8,12 +8,13 @@
 
 #define MAX_PRESETS          20
 #define PRESET_NAME_LEN      14
-#define MENU_ITEMS_COUNT      5
+#define MENU_ITEMS_COUNT      6
 #define MODE_LIST_VISIBLE     5
 #define PRESETS_LIST_VISIBLE  4
 #define SAVE_NAMES_COUNT     17
 #define SWEEP_STEP_COUNT      4
 #define SWEEP_SPEED_COUNT     3
+#define MAIN_STYLE_COUNT      6
 
 typedef enum {
     JammerModeOok650Async = 0,
@@ -47,7 +48,17 @@ typedef enum {
     AppScreenPresets,
     AppScreenSaveName,
     AppScreenSweep,
+    AppScreenStyleSelect,
 } AppScreen;
+
+typedef enum {
+    StyleClassic = 0,
+    StyleOscilloscope,
+    StyleRadar,
+    StyleTuner,
+    StyleTerminal,
+    StyleSpectrum,
+} MainScreenStyle;
 
 typedef struct {
     char       name[PRESET_NAME_LEN];
@@ -88,6 +99,10 @@ typedef struct {
     uint8_t  sweep_row;        // 0=FreqB, 1=Step, 2=Speed
     uint32_t sweep_last_hop;   // furi_get_tick() at last frequency hop
     bool     sweep_going_up;   // current sweep direction
+
+    // Main-screen visual style
+    MainScreenStyle main_style;
+    uint8_t         style_selection;
 
     uint8_t anim_frame;
     bool    app_running;

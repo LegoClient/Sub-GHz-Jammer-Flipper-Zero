@@ -16,6 +16,7 @@ Built and tested against **Momentum firmware** (`mntm-011`, target `f7`, API `86
 - **Saveable presets** - 6 defaults plus on-the-fly save/load/delete (up to 20 total)
 - **In-app menu** - clean submenus for mode select, presets, sweep, and a Raw Noise shortcut
 - **Animated header** - antenna dots scan outward when running, retreat when paused, idle when stopped
+- **6 selectable main-screen styles** - Classic, Oscilloscope, Radar Scope, Vintage Tuner, Hacker Terminal, Spectrum Bars
 - **RGB LED status indicator** - see at a glance what the app is doing
 - **External / internal CC1101 auto-detect** - uses an external module if connected, otherwise the built-in radio
 
@@ -50,6 +51,7 @@ On the main screen:
 - **Presets** - load, save, or delete frequency+mode combinations
 - **Sweep** - configure and start an oscillating sweep
 - **Raw Noise** - one-tap shortcut to the hardware-RNG noise mode
+- **Main Style** - switch between 6 different main-screen visual layouts
 - **Back** - return to the jammer screen
 
 ---
@@ -103,6 +105,21 @@ The Flipper's RGB LED reflects the jammer state at a glance:
 | Sweeping | Blue | Fast blink (~10 Hz) |
 
 The LED is cleared on app exit.
+
+---
+
+## 🖼 Main-Screen Styles
+
+Open **Menu -> Main Style** to choose between 6 fully-functional layouts. Your current selection is marked with a `*` in the picker; OK applies, Back cancels. Switching styles is non-disruptive - TX keeps running through the change. Frequency tuning (Up/Down/Left/Right) works in every style.
+
+| # | Style | Vibe |
+|---|---|---|
+| 1 | **Classic** | The original - header bar with antennas, animated signal arcs, big-numbers frequency, status badge |
+| 2 | **Oscilloscope** | A live waveform trace fills the middle of the screen and morphs by mode: smooth sine, square pulses, sawtooth ramps, noise scribble, burst spikes, etc. |
+| 3 | **Radar Scope** | Circular radar dial on the left with a sweep line that ticks through 8 angles when running; clean info card on the right (frequency, mode, status, hints) |
+| 4 | **Vintage Tuner** | 70s-style horizontal frequency scale spanning 300 -> 928 MHz with band-edge ticks and a sliding pointer at the current frequency - best for spectrum awareness |
+| 5 | **Hacker Terminal** | Faux shell aesthetic with `> tx --f=...`, a status line, a packet hex dump that reflects the actual modulation pattern, and a blinking cursor |
+| 6 | **Spectrum Bars** | 16-bar music-visualiser style - each mode produces a unique bar pattern (smooth wave, alternating pillars, chaotic flicker, traveling pulse for Sweep) |
 
 ---
 
